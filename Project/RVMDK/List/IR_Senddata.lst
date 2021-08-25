@@ -1,0 +1,95 @@
+L 1 "..\..\User\src\IR_Senddata.c"
+N#include "All_head.h"
+L 1 "..\..\User\inc\All_head.h" 1
+N
+N//extern void treat_zlg7290(void);
+N//extern void GPIO_ZLG7290_Config_PB7_InPut(void); //PB7设置为输入
+N//extern void GPIO_ZLG7290_Config_OutPut(void);//PB6=SCL，PB7=SDA设置为输出
+Nextern void Write_IRdata(unsigned char p_irdata);
+N
+N
+L 2 "..\..\User\src\IR_Senddata.c" 2
+N
+Nvolatile unsigned char irdata1,irdata2; //16为地址的前八位和后八位,作为识别数据是否正确
+Nunsigned int endcount; //计数结束（即完成延时）
+Nextern unsigned int count;	 //计数（相当于发送延时）
+Nvolatile unsigned char IR_flag = 0;  //红外发射标志
+N
+N
+N/*******************************************************
+N每发送0.56ms的38KHz的载波里面一般包括大约21个脉冲周期
+N					0: 0.56ms/0.565ms 
+N					1: 0.56ms/1.685ms
+N********************************************************/
+Nvoid Send_IRdata(unsigned char x_irdata)
+N{
+N	unsigned char i;   //循环移位计数
+N	unsigned char irdata;  //数据寄存
+N	
+N	irdata = x_irdata;
+N	for(i=0;i<8;i++)
+N	{
+N		//先发送0.56ms的38KHz红外波（即编码中0.56ms的低电平）
+N		count = 0;
+N		endcount = 42;	//0.56ms / 13.15us = 42 (42 / 2 = 21，即发送0.56ms的载波中包括21个载波周期)
+N		IR_flag = 1; //发送标志
+N		while(count < endcount);
+N
+N		if(irdata&0x01) //判断最低位是0还是1（0则延时(1.125ms-0.56ms=0.565ms)；1则延时(2.25ms-0.56ms=1.685ms)）
+N		{
+N			
+N			endcount = 43;	  //1.685ms / 13.15us = 128
+N		}
+N		else endcount = 128;	  //0.565ms / 13.15us = 43
+N
+N		count = 0;
+N		IR_flag = 0;	//清除标志位，为下次做准备
+N		while(count < endcount);
+N
+N		irdata = irdata >> 1;
+N	}		  
+N
+N}
+N/*******************************************************************
+N红外数据发送 ： 发射端所发射的一帧码含有一个引导码、8位用户码、8位用户反码，8位键数据码、8位键数据反码
+N				其中，引导码包括9ms的高电平和4.5ms的低电平
+N				A logical “1” takes 2.25ms 
+N				A logical “0” is only half of that, being 1.125ms .
+N
+N				低电平发送载波（IR_flag = 1）；
+N				高电平不发送载波（IR_flag = 0）,但仍有数据0发送
+N
+N				发送时，先发低位，再发高位
+N*******************************************************************/
+Nvoid Write_IRdata(unsigned char p_irdata)   
+N{	
+N	irdata1 = 3;   //（用户码）自己定义
+N	irdata2 = 252;	//（用户反码）
+N
+N	//发送9ms的引导码（高电平）
+N	
+N	endcount = 684;	 //9ms / 13.15us = 684
+N	count = 0;
+N	IR_flag = 1; //发送标志(发送38K载波)
+N	while(count < endcount);
+N
+N	//发送4.5ms的引导码的结束码（低电平）
+N	count = 0;
+N	endcount = 342;	 //4.5ms / 13.15us = 342 
+N	IR_flag = 0; //发送标志（发送0）
+N	while(count < endcount);
+N	
+N	Send_IRdata(irdata1);       //发送16位地址的前八位（8位用户码）
+N    Send_IRdata(irdata2);      //发送16位地址的后八位（8位用户反码）
+N	Send_IRdata(p_irdata);	  //发送8位键数据码
+N	Send_IRdata(~p_irdata); //发送8位键数据反码
+N	Send_IRdata(0x66);	//结束码（也用于辨别）
+N
+N	
+N	//最后发送0.56ms的38KHz红外载波（即编码中0.56ms的低电平
+N	count = 0;
+N	endcount = 42;	//0.56ms / 13.15us = 42 (42 / 2 = 21，即发送0.56ms的载波中包括21个载波周期)
+N	IR_flag = 1; //发送标志
+N	while(count < endcount);
+N	IR_flag = 0; 			
+N}	
